@@ -209,6 +209,72 @@ pub async fn get_token_price_jup(token: &str, vs_token: &str) -> Result<f64, Jup
         })
 }
 
+/// Errors that can occur when getting the market cap.
+#[derive(Debug, thiserror::Error)]
+pub enum MarketCapError {
+    /// Error from the `util::get_token_price_jup` function.
+    #[error("Failed to get token price from Jupiter API: {0}")]
+    GetTokenPriceJup(#[from] JupPriceApiError),
+}
+
+/// Fetches the market cap of a token.
+///
+/// This function calculates the market cap of a token by fetching its price from the Jupiter API
+/// and multiplying it by the supply of pumpfun tokens.
+///
+/// # Arguments
+///
+/// * `token` - A string slice that holds the token symbol.
+///
+/// # Errors
+///
+/// Returns a `MarketCapError` if the request to fetch the token price fails.
+pub async fn get_market_cap(token: &str) -> Result<u128, MarketCapError> {
+    /// The supply of pumpfun tokens.
+    const PUMPFUN_TOKEN_SUPPLY: u128 = 1_000_000_000;
+
+    let price = get_token_price_jup(token, "USDC").await?;
+    let market_cap = (price * PUMPFUN_TOKEN_SUPPLY as f64) as u128;
+    Ok(market_cap)
+}
+
+/// Filters tokens based on their market cap.
+///
+/// This function fetches the market cap of a token and compares it to a given threshold.
+/// If the market cap is below the threshold, it returns `false`. If the market cap is above
+/// the threshold or if the token price is not found, it returns `true`.
+///
+/// # Arguments
+///
+/// * `token` - A string slice that holds the token symbol.
+/// * `mc_threshold` - The market cap threshold.
+///
+/// # Errors
+///
+/// Returns a `MarketCapError` if the request to fetch the token price fails.
+pub async fn filter_market_cap(token: &str, mc_threshold: u128) -> Result<bool, MarketCapError> {
+    let market_cap_res = get_market_cap(token).await;
+    match market_cap_res {
+        Ok(market_cap) => {
+            if mc_threshold <= market_cap {
+                Ok(true)
+            } else {
+                tracing::debug!(
+                    "Skipping because market cap is above threshold: {}",
+                    market_cap
+                );
+                Ok(false)
+            }
+        }
+        Err(MarketCapError::GetTokenPriceJup(JupPriceApiError::PriceNotFound(resp))) => {
+            tracing::debug!("Price not found from Jupiter API: {}", resp);
+            tracing::debug!("Proceeding with sniper request");
+            Ok(true)
+        }
+        Err(err) => Err(err),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

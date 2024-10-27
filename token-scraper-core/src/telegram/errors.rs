@@ -1,15 +1,39 @@
 //! Telegram errors.
 
+use crate::{message_handler::ExtractTokenError, util::MarketCapError};
+
+/// Errors that can occur in the Telegram module.
+///
+/// This enum represents the possible errors that can occur while interacting with Telegram.
 #[derive(Debug, thiserror::Error)]
 pub enum TelegramError {
+    /// Error when connecting to Telegram.
     #[error("Failed to connect to Telegram: {0}")]
     TelegramConnection(#[from] TelegramConnectionError),
 
+    /// Error when authorizing the client.
     #[error("Failed to authorize: {0}")]
     Authorization(#[from] AuthorizationError),
 
+    /// Error when handling an update.
     #[error("Failed to handle update: {0}")]
     UpdateHandling(#[from] grammers_client::InvocationError),
+
+    /// Error when extracting a token.
+    #[error("Failed to extract token: {0}")]
+    TokenExtraction(#[from] ExtractTokenError),
+
+    /// Error when adding a token to file.
+    #[error("Failed to add token to file: {0}")]
+    AddTokenToFile(#[from] std::io::Error),
+
+    /// Error when sending a token request.
+    #[error("Failed to send token request: {0}")]
+    SendTokenRequest(#[from] reqwest::Error),
+
+    /// Error when filtering market cap.
+    #[error("Failed to filter market cap: {0}")]
+    FilterMarketCap(#[from] MarketCapError),
 }
 
 /// Error types for Telegram connection.

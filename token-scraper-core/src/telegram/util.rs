@@ -4,6 +4,8 @@ use std::io::{BufRead, Write};
 
 use grammers_client::{session::Session, SignInError};
 
+use crate::filters::Filter;
+
 use super::errors::*;
 
 /// Connects to the Telegram client.
@@ -109,4 +111,28 @@ pub async fn authorize_client(
     }
 
     Ok(())
+}
+
+/// Filters a message based on the provided Telegram channel ID.
+///
+/// This function iterates through the provided `filters` and checks if the `channel_id` matches any of the filters' Telegram channel IDs.
+/// If a match is found, it returns the matching `Filter`.
+///
+/// # Arguments
+///
+/// * `channel_id` - The Telegram channel ID to be checked.
+/// * `filters` - A slice of `Filter` objects to be checked against.
+///
+/// # Errors
+///
+/// This function does not return any errors.
+pub fn filter_message(channel_id: i64, filters: &[Filter]) -> Option<Filter> {
+    for filter in filters {
+        if let Some(filter_channel_id) = filter.telegram_channel_id {
+            if channel_id == filter_channel_id {
+                return Some(filter.clone());
+            }
+        }
+    }
+    None
 }

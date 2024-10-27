@@ -10,6 +10,7 @@
 )]
 
 mod discord;
+mod filters;
 mod macros;
 mod message_handler;
 mod photon_util;
@@ -20,8 +21,8 @@ mod util;
 use std::{path::Path, sync::Arc};
 
 use discord::stream::start_stream;
+use filters::read_filters_from_csv;
 use message_handler::handle_message;
-use settings::read_discord_filters_from_csv;
 use tokio::sync::{mpsc, Mutex};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 use twilight_model::gateway::event::DispatchEvent;
@@ -37,7 +38,7 @@ pub const DISCORD_FILTERS_FILE_PATH: &str = "discord_filters.csv";
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let settings = Settings::new()?;
-    let discord_filters = read_discord_filters_from_csv(Path::new(DISCORD_FILTERS_FILE_PATH))?;
+    let filters = read_filters_from_csv(Path::new(DISCORD_FILTERS_FILE_PATH))?;
     // Create the detected tokens file if it doesn't exist
     if !Path::new(DETECTED_TOKENS_FILE_PATH).exists() {
         std::fs::File::create(DETECTED_TOKENS_FILE_PATH)?;
@@ -66,7 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Main event loop
     while let Some(event) = discord_event_rx.recv().await {
-        let discord_filters = discord_filters.clone();
+        let filters = filters.clone();
         let rpc_url = settings.solana.rpc_url.clone();
 
         tokio::spawn(async move {
@@ -74,7 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Err(e) = handle_message(
                     &message,
                     Path::new(DETECTED_TOKENS_FILE_PATH),
-                    &discord_filters,
+                    &filters,
                     &rpc_url,
                 )
                 .await
