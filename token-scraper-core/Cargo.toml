@@ -12,6 +12,7 @@ config = { workspace = true }
 console = { workspace = true }
 csv = { workspace = true }
 futures-util = { workspace = true, features = ["sink"] }
+grammers-client = { workspace = true }
 http = { workspace = true }
 indicatif = { workspace = true }
 raydium-amm-interface = { workspace = true, features = ["serde"] }

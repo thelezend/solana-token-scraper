@@ -14,6 +14,7 @@ mod macros;
 mod message_handler;
 mod photon_util;
 mod settings;
+mod telegram;
 mod util;
 
 use std::{path::Path, sync::Arc};
