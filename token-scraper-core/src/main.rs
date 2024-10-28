@@ -55,8 +55,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_filter(EnvFilter::new("token_scraper=debug"));
 
     // Create a console layer with info level filtering
-    let console_layer =
-        tracing_subscriber::fmt::layer().with_filter(EnvFilter::new("token_scraper=info"));
+    let console_layer = tracing_subscriber::fmt::layer()
+        .with_target(false)
+        .with_filter(EnvFilter::new("token_scraper=info"));
 
     tracing_subscriber::registry()
         .with(file_layer)
