@@ -23,6 +23,7 @@ use std::{path::Path, sync::Arc};
 use discord::stream::start_stream;
 use filters::read_filters_from_csv;
 use message_handler::handle_message;
+use telegram::{authorize_client, connect_to_telegram, SESSION_FILE};
 use tokio::sync::{mpsc, Mutex};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 use twilight_model::gateway::event::DispatchEvent;
@@ -51,40 +52,76 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file_layer = tracing_subscriber::fmt::layer()
         .json()
         .with_writer(file_writer)
-        .with_filter(EnvFilter::new("info"));
+        .with_filter(EnvFilter::new("debug"));
     // .with_filter(EnvFilter::new("debug"));
 
     tracing_subscriber::registry().with(file_layer).init();
 
-    let (discord_event_tx, mut discord_event_rx) = mpsc::unbounded_channel();
+    // Start the Telegram handler
+    if let Some(telegram_settings) = settings.telegram {
+        let telegram_client = connect_to_telegram(
+            telegram_settings.api_id,
+            telegram_settings.api_hash,
+            SESSION_FILE,
+        )
+        .await?;
+        let mut sign_out = false;
+        authorize_client(&telegram_client, SESSION_FILE, &mut sign_out).await?;
 
-    // Spawn a task to manage the Discord event stream
-    tokio::spawn(manage_discord_stream(
-        settings.discord.user_token.clone(),
-        settings.discord.sec_ws_key.clone(),
-        discord_event_tx,
-    ));
-
-    // Main event loop
-    while let Some(event) = discord_event_rx.recv().await {
         let filters = filters.clone();
         let rpc_url = settings.solana.rpc_url.clone();
-
         tokio::spawn(async move {
-            if let DispatchEvent::MessageCreate(message) = event {
-                if let Err(e) = handle_message(
-                    &message,
-                    Path::new(DETECTED_TOKENS_FILE_PATH),
-                    &filters,
-                    &rpc_url,
-                )
-                .await
-                {
-                    tracing::error!("Error while handling discord message: {:?}", e);
-                }
+            let result = telegram::start(
+                &telegram_client,
+                &filters,
+                &rpc_url,
+                Path::new(DETECTED_TOKENS_FILE_PATH),
+            )
+            .await;
+
+            if let Err(e) = result {
+                tracing::error!("Error while handling telegram message: {}", e);
+                tracing::debug!("Error: {:?}", e);
             }
         });
     }
+
+    // Start the Discord handler
+    if let Some(discord_settings) = settings.discord {
+        tracing::info!("Starting Discord module..");
+        let (discord_event_tx, mut discord_event_rx) = mpsc::unbounded_channel();
+
+        // Spawn a task to manage the Discord event stream
+        tokio::spawn(manage_discord_stream(
+            discord_settings.user_token.clone(),
+            discord_settings.sec_ws_key.clone(),
+            discord_event_tx,
+        ));
+
+        // Main event loop
+        while let Some(event) = discord_event_rx.recv().await {
+            let filters = filters.clone();
+            let rpc_url = settings.solana.rpc_url.clone();
+
+            tokio::spawn(async move {
+                if let DispatchEvent::MessageCreate(message) = event {
+                    if let Err(e) = handle_message(
+                        &message,
+                        Path::new(DETECTED_TOKENS_FILE_PATH),
+                        &filters,
+                        &rpc_url,
+                    )
+                    .await
+                    {
+                        tracing::error!("Error while handling discord message: {}", e);
+                        tracing::debug!("Error: {:?}", e);
+                    }
+                }
+            });
+        }
+    }
+
+    tracing::error!("Neither Telegram nor Discord settings found, exiting...");
 
     Ok(())
 }
@@ -97,7 +134,7 @@ async fn manage_discord_stream(
 ) {
     let attempts = Arc::new(Mutex::new(0));
     loop {
-        tracing::info!("Attempting to start stream");
+        tracing::debug!("Attempting to start discord stream");
 
         // Reset attempts every 60 seconds
         let attempts_clone = Arc::clone(&attempts);
@@ -109,7 +146,6 @@ async fn manage_discord_stream(
         let result = start_stream(&discord_token, &sec_ws_key, Arc::new(event_tx.clone())).await;
         if let Err(e) = result {
             tracing::debug!("Stream error: {e:?}");
-            println!("Connection closed, retrying...");
             let mut attempts = attempts.lock().await;
             *attempts += 1;
             if *attempts >= 3 {
@@ -119,11 +155,4 @@ async fn manage_discord_stream(
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
     tracing::error!("Stream errored after 3 attempts");
-    println!(
-        "{}",
-        console::style(
-            "Discord stream errored after multiple retries. Please check logs for more details and try restarting the program."
-        )
-        .red()
-    );
 }

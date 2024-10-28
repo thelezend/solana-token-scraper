@@ -71,22 +71,20 @@ pub async fn handle_message(
         }
     }
 
-    tracing::info!("Found {} for filter: {}", token.to_string(), filter.name);
-
     if is_token_already_detected(&token.to_string(), detected_tokens_file_path).await? {
-        tracing::info!("Token already detected, skipping");
+        tracing::debug!("Token {} already detected, skipping", token);
         return Ok(());
     }
 
-    println!(
-        "Token {} detected for filter: {}",
-        console::style(token.to_string()).green(),
-        console::style(filter.name.clone()).yellow()
+    tracing::info!(
+        "Token detected for {}: {}",
+        filter.name,
+        console::style(token).green()
     );
 
     send_token_request(&token.to_string(), &filter.token_endpoint_url).await?;
     add_token_to_file(&token.to_string(), detected_tokens_file_path).await?;
-    tracing::info!("Successfully sent token to endpoint: {}", token.to_string());
+    tracing::debug!("Successfully sent request to endpoint for token: {}", token);
 
     Ok(())
 }
@@ -145,8 +143,6 @@ async fn process_message_for_token(
     message: &MessageCreate,
     rpc_url: &str,
 ) -> Result<Option<Pubkey>, ExtractTokenError> {
-    tracing::debug!("Processing message: {:?}", message);
-
     // Attempt to extract a token from the message content
     if let Some(token) = extract_token(&message.content, rpc_url).await? {
         return Ok(Some(token));

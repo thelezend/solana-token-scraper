@@ -7,8 +7,7 @@ use grammers_client::Update;
 use crate::{
     filters::Filter,
     message_handler::extract_token,
-    telegram::constants::SESSION_FILE,
-    util::{add_token_to_file, filter_market_cap, send_token_request},
+    util::{add_token_to_file, filter_market_cap, is_token_already_detected, send_token_request},
 };
 
 use super::{errors::*, util::*};
@@ -30,16 +29,11 @@ use super::{errors::*, util::*};
 ///
 /// Returns a `TelegramError` if any step in the process fails.
 pub async fn start(
-    api_id: i32,
-    api_hash: String,
+    client: &grammers_client::Client,
     filters: &[Filter],
     solana_rpc_url: &str,
     detected_tokens_file_path: &Path,
 ) -> Result<(), TelegramError> {
-    let client = connect_to_telegram(api_id, api_hash, SESSION_FILE).await?;
-    let mut sign_out = false;
-    authorize_client(&client, SESSION_FILE, &mut sign_out).await?;
-
     tracing::info!("Connected to Telegram!");
 
     loop {
@@ -96,7 +90,7 @@ async fn process_message(
         let token = extract_token(message.text(), solana_rpc_url).await?;
         if let Some(token) = token {
             tracing::info!(
-                "Token detected for {} filter: {}",
+                "Token detected for {}: {}",
                 filter.name,
                 console::style(token).green()
             );
@@ -105,11 +99,16 @@ async fn process_message(
                 return Ok(());
             }
 
+            if is_token_already_detected(&token.to_string(), detected_tokens_file_path).await? {
+                tracing::debug!("Token {} already detected, skipping", token);
+                return Ok(());
+            }
+
             send_token_request(&token.to_string(), &filter.token_endpoint_url).await?;
             add_token_to_file(&token.to_string(), detected_tokens_file_path).await?;
             tracing::debug!("Successfully sent request to endpoint for token: {}", token);
         } else {
-            tracing::debug!("No token detected in message for filter {}", filter.name);
+            tracing::debug!("No token detected in message for {}", filter.name);
         }
     }
 

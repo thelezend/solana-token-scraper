@@ -7,14 +7,6 @@ use crate::{message_handler::ExtractTokenError, util::MarketCapError};
 /// This enum represents the possible errors that can occur while interacting with Telegram.
 #[derive(Debug, thiserror::Error)]
 pub enum TelegramError {
-    /// Error when connecting to Telegram.
-    #[error("Failed to connect to Telegram: {0}")]
-    TelegramConnection(#[from] TelegramConnectionError),
-
-    /// Error when authorizing the client.
-    #[error("Failed to authorize: {0}")]
-    Authorization(#[from] AuthorizationError),
-
     /// Error when handling an update.
     #[error("Failed to handle update: {0}")]
     UpdateHandling(#[from] grammers_client::InvocationError),

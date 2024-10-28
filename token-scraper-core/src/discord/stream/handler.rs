@@ -76,9 +76,9 @@ pub async fn handle_stream(
         let task = tokio::spawn(async move {
             match event.unwrap() {
                 GatewayEvent::Hello(data) => {
-                    tracing::info!("Received hello event: {:?}", data);
+                    tracing::debug!("Received hello event: {:?}", data);
 
-                    tracing::info!("Sending heartbeat");
+                    tracing::debug!("Sending heartbeat");
                     send_heartbeat(Arc::clone(&sequence), Arc::clone(&ws_write))
                         .await
                         .expect("Failed to send heartbeat");
@@ -94,7 +94,7 @@ pub async fn handle_stream(
                             if let Err(e) =
                                 send_heartbeat(Arc::clone(&sequence), Arc::clone(&ws_write)).await
                             {
-                                tracing::error!("Failed to send heartbeat: {:?}", e);
+                                tracing::debug!("Failed to send heartbeat: {:?}", e);
                                 break;
                             }
                         }
@@ -169,8 +169,8 @@ async fn handle_exception(
 
             match event_type {
                 "READY" => {
-                    tracing::info!("Received ready event");
-                    tracing::info!(
+                    tracing::debug!("Received ready event");
+                    tracing::debug!(
                         "Logged in as {}",
                         json_value
                             .get("d")

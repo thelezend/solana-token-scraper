@@ -10,13 +10,9 @@ mod ws_request;
 use std::sync::Arc;
 
 use futures_util::StreamExt;
-use indicatif::{ProgressBar, ProgressStyle};
-use std::time::Duration;
 use tokio::sync::{mpsc::UnboundedSender, Mutex};
 use tokio_tungstenite::connect_async;
 use twilight_model::gateway::event::DispatchEvent;
-
-use crate::get_spinner;
 
 use self::handler::handle_stream;
 
@@ -54,21 +50,15 @@ pub async fn start_stream(
     sec_ws_key: &str,
     event_tx: Arc<UnboundedSender<DispatchEvent>>,
 ) -> Result<(), Error> {
-    let spinner = get_spinner!("Connecting to discord...");
-
     let request = ws_request::create_request_with_headers(sec_ws_key.to_string()).await?;
     let (ws_stream, _) = connect_async(request).await?;
     let (ws_write, ws_read) = ws_stream.split();
-
-    spinner.finish();
 
     let ws_write = Arc::new(Mutex::new(ws_write));
 
     let sequence: Arc<Mutex<Option<u64>>> = Arc::new(Mutex::new(None));
     let resume_gateway_url: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let session_id: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-
-    println!("Watching for messages...");
 
     handle_stream(
         discord_token,

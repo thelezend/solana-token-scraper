@@ -28,9 +28,11 @@ pub enum Error {
 #[derive(Debug, Deserialize)]
 pub struct Settings {
     /// Discord settings.
-    pub discord: DiscordSettings,
+    pub discord: Option<DiscordSettings>,
     /// Solana settings.
     pub solana: SolanaSettings,
+    /// Telegram settings.
+    pub telegram: Option<TelegramSettings>,
 }
 
 /// Discord settings for the token-scraper application.
@@ -40,6 +42,15 @@ pub struct DiscordSettings {
     pub user_token: String,
     /// Secret WebSocket key.
     pub sec_ws_key: String,
+}
+
+/// Telegram settings for the token-scraper application.
+#[derive(Debug, Deserialize)]
+pub struct TelegramSettings {
+    /// API ID for the Telegram client.
+    pub api_id: i32,
+    /// API hash for the Telegram client.
+    pub api_hash: String,
 }
 
 /// Solana settings for the token-scraper application.

@@ -5079,7 +5079,6 @@ dependencies = [
  "futures-util",
  "grammers-client",
  "http 1.1.0",
- "indicatif",
  "raydium-amm-interface",
  "regex",
  "reqwest 0.12.8",
