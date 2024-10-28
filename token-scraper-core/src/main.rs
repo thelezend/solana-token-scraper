@@ -47,14 +47,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Setup logging
     // Create a file layer with debug level filtering
-    let file_appender = tracing_appender::rolling::daily("logs", "token-scraper.log");
+    let file_appender = tracing_appender::rolling::daily("logs", ".log");
     let (file_writer, _file_writer_guard) = tracing_appender::non_blocking(file_appender);
     let file_layer = tracing_subscriber::fmt::layer()
+        .json()
         .with_writer(file_writer)
-        .with_filter(EnvFilter::new("debug"));
+        .with_filter(EnvFilter::new("token_scraper=debug"));
 
     // Create a console layer with info level filtering
-    let console_layer = tracing_subscriber::fmt::layer().with_filter(EnvFilter::new("info"));
+    let console_layer =
+        tracing_subscriber::fmt::layer().with_filter(EnvFilter::new("token_scraper=info"));
 
     tracing_subscriber::registry()
         .with(file_layer)
