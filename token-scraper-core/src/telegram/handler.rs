@@ -95,8 +95,10 @@ async fn process_message(
                 console::style(token).green()
             );
 
-            if !filter_market_cap(&token.to_string(), filter.market_cap.unwrap()).await? {
-                return Ok(());
+            if let Some(market_cap) = filter.market_cap {
+                if !filter_market_cap(&token.to_string(), market_cap).await? {
+                    return Ok(());
+                }
             }
 
             if is_token_already_detected(&token.to_string(), detected_tokens_file_path).await? {
