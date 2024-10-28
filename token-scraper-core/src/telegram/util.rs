@@ -2,11 +2,11 @@
 
 use std::io::{BufRead, Write};
 
-use grammers_client::{session::Session, SignInError};
+use grammers_client::{session::Session, InitParams, SignInError};
 
 use crate::filters::Filter;
 
-use super::errors::*;
+use super::{errors::*, retry::RetryPolicy};
 
 /// Connects to the Telegram client.
 ///
@@ -28,7 +28,10 @@ pub async fn connect_to_telegram(
         session: Session::load_file_or_create(session_file)?,
         api_id,
         api_hash: api_hash.clone(),
-        params: Default::default(),
+        params: InitParams {
+            reconnection_policy: &RetryPolicy { attempts: 3 },
+            ..Default::default()
+        },
     })
     .await?)
 }
