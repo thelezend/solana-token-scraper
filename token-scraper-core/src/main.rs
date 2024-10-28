@@ -33,13 +33,13 @@ use crate::settings::Settings;
 /// Path to the detected tokens file.
 pub const DETECTED_TOKENS_FILE_PATH: &str = "detected_tokens.txt";
 
-/// Path to the Discord filters file.
-pub const DISCORD_FILTERS_FILE_PATH: &str = "discord_filters.csv";
+/// Path to the filters file.
+pub const FILTERS_FILE_PATH: &str = "filters.csv";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let settings = Settings::new()?;
-    let filters = read_filters_from_csv(Path::new(DISCORD_FILTERS_FILE_PATH))?;
+    let filters = read_filters_from_csv(Path::new(FILTERS_FILE_PATH))?;
     // Create the detected tokens file if it doesn't exist
     if !Path::new(DETECTED_TOKENS_FILE_PATH).exists() {
         std::fs::File::create(DETECTED_TOKENS_FILE_PATH)?;
