@@ -29,7 +29,7 @@ pub async fn connect_to_telegram(
         api_id,
         api_hash: api_hash.clone(),
         params: InitParams {
-            reconnection_policy: &RetryPolicy { attempts: 3 },
+            reconnection_policy: &RetryPolicy,
             ..Default::default()
         },
     })
