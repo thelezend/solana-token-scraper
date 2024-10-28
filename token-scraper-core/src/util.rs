@@ -259,7 +259,7 @@ pub async fn filter_market_cap(token: &str, mc_threshold: u128) -> Result<bool, 
             if mc_threshold <= market_cap {
                 Ok(true)
             } else {
-                tracing::debug!(
+                tracing::info!(
                     "Skipping because market cap is above threshold: {}",
                     market_cap
                 );

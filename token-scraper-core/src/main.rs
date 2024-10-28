@@ -46,19 +46,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Setup logging
-    // Create a file layer with info level filtering
+    // Create a file layer with debug level filtering
     let file_appender = tracing_appender::rolling::daily("logs", "token-scraper.log");
     let (file_writer, _file_writer_guard) = tracing_appender::non_blocking(file_appender);
     let file_layer = tracing_subscriber::fmt::layer()
-        .json()
         .with_writer(file_writer)
         .with_filter(EnvFilter::new("debug"));
-    // .with_filter(EnvFilter::new("debug"));
 
-    tracing_subscriber::registry().with(file_layer).init();
+    // Create a console layer with info level filtering
+    let console_layer = tracing_subscriber::fmt::layer().with_filter(EnvFilter::new("info"));
 
-    // Start the Telegram handler
+    tracing_subscriber::registry()
+        .with(file_layer)
+        .with(console_layer)
+        .init();
+
+    // Start the Telegram module
     if let Some(telegram_settings) = settings.telegram {
+        let telegram_span = tracing::span!(tracing::Level::DEBUG, "telegram_module");
+        let _telegram_enter = telegram_span.enter();
+
         let telegram_client = connect_to_telegram(
             telegram_settings.api_id,
             telegram_settings.api_hash,
@@ -86,8 +93,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Start the Discord handler
+    // Start the Discord module
     if let Some(discord_settings) = settings.discord {
+        let discord_span = tracing::span!(tracing::Level::DEBUG, "discord_module");
+        let _discord_enter = discord_span.enter();
+
         tracing::info!("Starting Discord module..");
         let (discord_event_tx, mut discord_event_rx) = mpsc::unbounded_channel();
 

@@ -100,7 +100,7 @@ async fn process_message(
             }
 
             if is_token_already_detected(&token.to_string(), detected_tokens_file_path).await? {
-                tracing::debug!("Token {} already detected, skipping", token);
+                tracing::info!("Token {} already detected, skipping", token);
                 return Ok(());
             }
 
