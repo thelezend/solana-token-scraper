@@ -33,7 +33,7 @@ pub async fn identify(discord_token: String, ws_write: WebsocketWrite) -> Result
         ))
         .await?;
 
-    tracing::info!("Identified with Discord");
+    tracing::debug!("Identified with Discord");
 
     Ok(())
 }

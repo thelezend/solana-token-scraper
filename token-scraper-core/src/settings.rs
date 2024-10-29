@@ -3,8 +3,6 @@
 //! This module handles loading and managing the configuration settings for the application.
 //! It provides a `Settings` struct that holds the configuration values and a method to load these values from a JSON file.
 
-use std::path::Path;
-
 use config::{Config, ConfigError, File, FileFormat};
 use serde::Deserialize;
 use thiserror::Error;
@@ -30,9 +28,11 @@ pub enum Error {
 #[derive(Debug, Deserialize)]
 pub struct Settings {
     /// Discord settings.
-    pub discord: DiscordSettings,
+    pub discord: Option<DiscordSettings>,
     /// Solana settings.
     pub solana: SolanaSettings,
+    /// Telegram settings.
+    pub telegram: Option<TelegramSettings>,
 }
 
 /// Discord settings for the token-scraper application.
@@ -42,6 +42,15 @@ pub struct DiscordSettings {
     pub user_token: String,
     /// Secret WebSocket key.
     pub sec_ws_key: String,
+}
+
+/// Telegram settings for the token-scraper application.
+#[derive(Debug, Deserialize)]
+pub struct TelegramSettings {
+    /// API ID for the Telegram client.
+    pub api_id: i32,
+    /// API hash for the Telegram client.
+    pub api_hash: String,
 }
 
 /// Solana settings for the token-scraper application.
@@ -67,62 +76,4 @@ impl Settings {
         let settings = config.try_deserialize()?;
         Ok(settings)
     }
-}
-
-/// Discord filter for the token-scraper application.
-#[derive(Debug, Deserialize, Clone)]
-pub struct DiscordFilter {
-    /// Name of the filter.
-    #[serde(rename = "NAME")]
-    pub name: String,
-    /// Channel ID to filter.
-    #[serde(rename = "CHANNEL_ID")]
-    pub channel_id: Option<u64>,
-    /// User ID to filter.
-    #[serde(rename = "USER_ID")]
-    pub user_id: Option<u64>,
-    /// Token endpoint URL to filter.
-    #[serde(rename = "TOKEN_ENDPOINT_URL")]
-    pub token_endpoint_url: String,
-    /// Market cap to filter.
-    #[serde(rename = "MARKET_CAP")]
-    pub market_cap: Option<u128>,
-}
-
-#[derive(Error, Debug)]
-pub enum DiscordFiltersError {
-    /// File error.
-    #[error("File error: {0}")]
-    File(#[from] std::io::Error),
-
-    /// Deserialization error.
-    #[error("Deserialization error: {0}")]
-    Deserialize(#[from] csv::Error),
-}
-
-/// Reads Discord filters from a CSV file.
-///
-/// This function opens the specified CSV file, reads its contents, and deserializes each record into a `DiscordFilter` struct.
-///
-/// # Arguments
-///
-/// * `file_path` - A `&Path` that holds the path to the CSV file.
-///
-/// # Errors
-///
-/// This function will return an error if the file cannot be opened or if deserialization fails.
-pub fn read_discord_filters_from_csv(
-    file_path: &Path,
-) -> Result<Vec<DiscordFilter>, DiscordFiltersError> {
-    let mut filters = Vec::new();
-    let file = std::fs::File::open(file_path)?;
-    let reader = std::io::BufReader::new(file);
-    let mut rdr = csv::Reader::from_reader(reader);
-
-    for result in rdr.deserialize() {
-        let record: DiscordFilter = result?;
-        filters.push(record);
-    }
-
-    Ok(filters)
 }

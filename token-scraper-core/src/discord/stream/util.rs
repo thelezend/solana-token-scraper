@@ -89,7 +89,7 @@ pub async fn send_heartbeat(
         .await
         .map_err(HeartbeatError::Ws)?;
 
-    tracing::debug!("Sent heartbeat: {:?}", payload);
+    tracing::trace!("Sent heartbeat: {:?}", payload);
 
     Ok(())
 }

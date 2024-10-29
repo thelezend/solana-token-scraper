@@ -6,9 +6,9 @@ use solana_sdk::pubkey::Pubkey;
 use twilight_model::gateway::payload::incoming::MessageCreate;
 
 use crate::{
+    filters::Filter,
     photon_util::{self, is_photon_link},
-    settings::DiscordFilter,
-    util::{self, *},
+    util::*,
 };
 
 /// Errors that can occur when handling a message.
@@ -48,14 +48,14 @@ pub enum Error {
 pub async fn handle_message(
     message: &MessageCreate,
     detected_tokens_file_path: &Path,
-    discord_filters: &[DiscordFilter],
+    filters: &[Filter],
     rpc_url: &str,
 ) -> Result<(), Error> {
     if message.guild_id.is_none() {
         return Ok(());
     }
 
-    let filter = match filter_message(message, discord_filters) {
+    let filter = match filter_message(message, filters) {
         Some(f) => f,
         None => return Ok(()),
     };
@@ -65,65 +65,46 @@ pub async fn handle_message(
         None => return Ok(()),
     };
 
-    if let Some(max_market_cap) = filter.market_cap {
-        let market_cap_res = get_market_cap(&token.to_string()).await;
-        match market_cap_res {
-            Ok(market_cap) => {
-                if market_cap > max_market_cap {
-                    return Ok(());
-                } else {
-                    tracing::debug!("Market cap is too high: {}", market_cap);
-                }
-            }
-            Err(MarketCapError::GetTokenPriceJup(JupPriceApiError::PriceNotFound(resp))) => {
-                tracing::debug!("Price not found: {}", resp);
-                tracing::debug!("Proceeding with sniper request")
-            }
-            Err(err) => {
-                return Err(Error::MarketCap(err));
-            }
+    if let Some(mc_threshold) = filter.market_cap {
+        if !filter_market_cap(&token.to_string(), mc_threshold).await? {
+            return Ok(());
         }
     }
 
-    tracing::info!("Found {} for filter: {}", token.to_string(), filter.name);
-
     if is_token_already_detected(&token.to_string(), detected_tokens_file_path).await? {
-        tracing::info!("Token already detected, skipping");
+        tracing::info!("Token {} already detected, skipping", token);
         return Ok(());
     }
 
-    println!(
-        "Token {} detected for filter: {}",
-        console::style(token.to_string()).green(),
-        console::style(filter.name.clone()).yellow()
+    tracing::info!(
+        "Token detected for {}: {}",
+        filter.name,
+        console::style(token).green()
     );
 
     send_token_request(&token.to_string(), &filter.token_endpoint_url).await?;
     add_token_to_file(&token.to_string(), detected_tokens_file_path).await?;
-    tracing::info!("Successfully sent token to endpoint: {}", token.to_string());
+    tracing::debug!("Successfully sent request to endpoint for token: {}", token);
 
     Ok(())
 }
 
-/// Filters a message based on the provided Discord filters.
+/// Filters a message based on the provided filters.
 ///
-/// This function iterates through the provided `discord_filters` and checks if the message matches any of the filters.
-/// If a match is found, the corresponding `DiscordFilter` is returned.
+/// This function iterates through the provided `filters` and checks if the message matches any of the filters.
+/// If a match is found, the corresponding `Filter` is returned.
 ///
 /// # Arguments
 ///
 /// * `message` - A reference to the `MessageCreate` object.
-/// * `discord_filters` - A slice of `DiscordFilter` objects to be checked against.
+/// * `filters` - A slice of `Filter` objects to be checked against.
 ///
 /// # Returns
 ///
-/// * `Some(DiscordFilter)` if a matching filter is found, otherwise `None`.
-fn filter_message(
-    message: &MessageCreate,
-    discord_filters: &[DiscordFilter],
-) -> Option<DiscordFilter> {
-    for filter in discord_filters {
-        match (filter.channel_id, filter.user_id) {
+/// * `Some(Filter)` if a matching filter is found, otherwise `None`.
+fn filter_message(message: &MessageCreate, filters: &[Filter]) -> Option<Filter> {
+    for filter in filters {
+        match (filter.discord_channel_id, filter.discord_user_id) {
             (Some(channel_id), Some(user_id)) => {
                 if message.channel_id.get() == channel_id && message.author.id.get() == user_id {
                     return Some(filter.clone());
@@ -162,8 +143,6 @@ async fn process_message_for_token(
     message: &MessageCreate,
     rpc_url: &str,
 ) -> Result<Option<Pubkey>, ExtractTokenError> {
-    tracing::debug!("Processing message: {:?}", message);
-
     // Attempt to extract a token from the message content
     if let Some(token) = extract_token(&message.content, rpc_url).await? {
         return Ok(Some(token));
@@ -207,7 +186,10 @@ pub enum ExtractTokenError {
 /// # Errors
 ///
 /// Returns an `ExtractTokenError` if the token extraction fails.
-async fn extract_token(content: &str, rpc_url: &str) -> Result<Option<Pubkey>, ExtractTokenError> {
+pub async fn extract_token(
+    content: &str,
+    rpc_url: &str,
+) -> Result<Option<Pubkey>, ExtractTokenError> {
     for word in content.split_whitespace() {
         if is_valid_token_address(word) {
             return Ok(Some(Pubkey::from_str(word).unwrap()));
@@ -221,33 +203,4 @@ async fn extract_token(content: &str, rpc_url: &str) -> Result<Option<Pubkey>, E
     }
 
     Ok(None)
-}
-
-/// Errors that can occur when getting the market cap.
-#[derive(Debug, thiserror::Error)]
-pub enum MarketCapError {
-    /// Error from the `util::get_token_price_jup` function.
-    #[error("Failed to get token price from Jupiter API: {0}")]
-    GetTokenPriceJup(#[from] util::JupPriceApiError),
-}
-
-/// Fetches the market cap of a token.
-///
-/// This function calculates the market cap of a token by fetching its price from the Jupiter API
-/// and multiplying it by the supply of pumpfun tokens.
-///
-/// # Arguments
-///
-/// * `token` - A string slice that holds the token symbol.
-///
-/// # Errors
-///
-/// Returns a `MarketCapError` if the request to fetch the token price fails.
-async fn get_market_cap(token: &str) -> Result<u128, MarketCapError> {
-    /// The supply of pumpfun tokens.
-    const PUMPFUN_TOKEN_SUPPLY: u128 = 1_000_000_000;
-
-    let price = util::get_token_price_jup(token, "USDC").await?;
-    let market_cap = (price * PUMPFUN_TOKEN_SUPPLY as f64) as u128;
-    Ok(market_cap)
 }
