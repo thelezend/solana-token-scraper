@@ -320,7 +320,7 @@ mod tests {
     async fn test_get_token_price_jup() {
         // Test with a valid token and vs_token
         let price =
-            get_token_price_jup("CT6sgK6Yz6LyfnSnY3PhS2VdvD2tFYkazPrNZEhNpump", "USDC").await;
+            get_token_price_jup("JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN", "USDC").await;
 
         assert!(price.is_ok(), "{}", price.err().unwrap());
     }
