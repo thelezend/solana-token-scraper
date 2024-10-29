@@ -9,19 +9,20 @@ A minimal CLI application designed to detect and scrape Solana token information
 ### Supported platforms
 
 - [x] Discord
-- [ ] Telegram
+- [x] Telegram
+- [ ] Twitter
 
 ## Working and Usage
 
-The program connects to the Discord gateway using your token and monitors messages mentioning valid Solana token addresses.
+The program connects to the Discord gateway using your token and the Telegram API using your credentials, monitoring messages mentioning valid Solana token addresses.
 
-- You can use `discord_filters.csv` to customize it and filter scans to specific channels and user messages.
+- You can use `filters.csv` to customize it and filter scans to specific channels, groups, and user messages.
 - This is not a sniping/trading bot but is designed to work alongside automation/sniping bots like [Peppermints](https://www.tensor.trade/trade/peppermints) or your custom programs with similar functionality.
 - Once a token is detected, it will send a GET request to the URL specified in the `TOKEN_ENDPOINT_URL` field.
 - The detected token addresses are saved in a local text file `detected_tokens.txt` to avoid duplicate purchases.
 - Logs are saved in `logs` directory for debugging purposes.
 
-> **IMPORTANT: Using user accounts for automation is against Discord's TOS, so use them at your own risk, preferably with accounts you can afford to lose.**
+> **IMPORTANT: Using user accounts for automation is against Discord's TOS, so use them at your own risk, preferably with accounts you can afford to lose. Telegram is more lenient.**
 
 ## Installation
 
@@ -39,6 +40,10 @@ Need to have a `settings.json` file in the working directory with the following:
         "user_token": "YOUR_DISCORD_USER_TOKEN",
         "sec_ws_key": "YOUR_DISCORD_SECRET_WS_KEY"
     },
+    "telegram": {
+        "api_id": "YOUR_TELEGRAM_API_ID",
+        "api_hash": "YOUR_TELEGRAM_API_HASH"
+    },
     "solana": {
         "rpc_url": "YOUR_RPC_URL"
     }
@@ -47,21 +52,37 @@ Need to have a `settings.json` file in the working directory with the following:
 
 - Read how to get a Discord user account token [here](https://gist.github.com/MarvNC/e601f3603df22f36ebd3102c501116c6).
 - You can similarly obtain the `Sec-Websocket-Key` from the headers of the WebSocket request to the Discord gateway.
+- Telegram's `api_id` and `api_hash` can be obtained from [my.telegram.org](https://my.telegram.org).
+- You will be asked to enter your phone number to receive a code to authenticate your Telegram account for the first time. Your session will be saved in `scraper.session`, so this won't be needed every time.
 - `rpc_url` is only used for getting token addresses from links. Won't be used to send transactions.
 
 ### Filters
 
-Need to have a `discord_filters.csv` file in the working directory with the following:
+Need to have a `filters.csv` file in the working directory with the following:
 
 ```csv
-NAME,CHANNEL_ID,USER_ID,TOKEN_ENDPOINT_URL
-test,12314,123234,http://localhost:9001/solana
-pow-calls,132414,51451345,http://localhost:9005/solana
+NAME,DISCORD_CHANNEL_ID,DISCORD_USER_ID,TELEGRAM_CHANNEL_ID,TOKEN_ENDPOINT_URL,MARKET_CAP
+test,12314,123234,,http://localhost:9001/solana,
+pow-calls,132414,51451345,,http://localhost:9005/solana,20000
 ```
 
-- `CHANNEL_ID` is the ID of the channel you want to monitor.
-- `USER_ID` is the ID of the user you want to monitor.
-- `TOKEN_ENDPOINT_URL` is the URL to which a GET request will be made, with the token address as a parameter.
+- `NAME`(Required): The name of the filter. This is just for your reference.
+- `DISCORD_CHANNEL_ID`(Optional): The ID of the Discord channel you want to monitor.
+- `DISCORD_USER_ID`(Optional): The ID of the Discord user you wish to monitor.
+- `TELEGRAM_CHANNEL_ID`(Optional):The ID of the Telegram channel you wish to monitor. For private Telegram channels, which start with `-100`, ensure that the `-100` is removed from the ID. If you’re unsure how to find a Telegram channel ID, a quick online search can guide you.
+- `TOKEN_ENDPOINT_URL`(Required): The URL to which a GET request will be made, with the token address as a parameter.
+- `MARKET_CAP`(Optional): Represents the minimum market capitalization required for the token to be detected. The token’s price is retrieved via Jupiter’s API; however, this may not be applicable for very new tokens.
+
+Discord fields are combined using an AND operation, whereas Discord and Telegram fields are combined using an OR operation. For example, in the filter below:
+
+```csv
+NAME,DISCORD_CHANNEL_ID,DISCORD_USER_ID,TELEGRAM_CHANNEL_ID,TOKEN_ENDPOINT_URL,MARKET_CAP
+test,12314,123234,2254310975,http://localhost:9001/solana,
+```
+
+The token is detected if it is posted in the `DISCORD_CHANNEL_ID` of `12314` by the `DISCORD_USER_ID` `123234`, OR if it is posted by anyone in the `TELEGRAM_CHANNEL_ID` `2254310975`.
+
+**Note:** Currently, filtering by USER ID is not supported for Telegram.
 
 ## Support and Contact
 
