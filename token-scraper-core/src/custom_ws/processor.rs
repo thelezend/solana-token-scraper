@@ -1,6 +1,6 @@
 //! Contains the logic to process WebSocket messages and detect tokens.
 
-use super::{errors::WsClientError, types::MonitorData};
+use super::errors::WsClientError;
 use crate::{
     message_handler::extract_token,
     util::{add_token_to_file, is_token_already_detected, send_token_request},
@@ -20,18 +20,35 @@ use std::path::Path;
 ///
 /// * `Result<(), WsClientError>` - Returns an empty result on success or a `WsClientError` on failure.
 pub async fn process_message(
-    message: &MonitorData,
+    message: &serde_json::Value,
     solana_rpc_url: &str,
     detected_tokens_file_path: &Path,
     token_endpoint_url: &str,
 ) -> Result<(), WsClientError> {
+    let user = message
+        .get("data")
+        .and_then(|data| data.get("user"))
+        .and_then(|user| user.get("name"))
+        .and_then(|name| name.as_str())
+        .unwrap_or("");
+
+    let text_content: String = match message
+        .get("data")
+        .and_then(|data| data.get("full_text"))
+        .cloned()
+        .map(serde_json::from_value)
+    {
+        Some(Ok(text)) => text,
+        _ => return Ok(()),
+    };
+
     // Extract token from the message data
-    let token = extract_token(message.data.as_str().unwrap(), solana_rpc_url).await?;
+    let token = extract_token(&text_content, solana_rpc_url).await?;
 
     if let Some(token) = token {
         tracing::info!(
             "Token detected on ws from user {}: {}",
-            message.task.user,
+            user,
             console::style(token).green()
         );
 
@@ -49,7 +66,11 @@ pub async fn process_message(
 
         tracing::debug!("Successfully sent request to endpoint for token: {}", token);
     } else {
-        tracing::debug!("No token detected in ws message {:?}", message);
+        tracing::debug!(
+            "No token detected in ws message from user {}: {}",
+            user,
+            text_content
+        );
     }
 
     Ok(())

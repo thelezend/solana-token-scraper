@@ -1,9 +1,12 @@
 //! A WebSocket client that manages sending and receiving messages.
 
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use futures_util::{SinkExt, StreamExt};
-use tokio::time::{self, Duration};
+use tokio::{
+    sync::Mutex,
+    time::{self, Duration},
+};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use super::{
@@ -26,13 +29,14 @@ pub type WsRx = futures_util::stream::SplitStream<
 >;
 
 /// A WebSocket client that manages sending and receiving messages.
+#[derive(Debug, Clone)]
 pub struct WsClient {
     /// The authentication token.
     token: String,
     /// The sending half of the WebSocket stream.
-    streamtx: WsTx,
+    streamtx: Arc<Mutex<WsTx>>,
     /// The receiving half of the WebSocket stream.
-    streamrx: WsRx,
+    streamrx: Arc<Mutex<WsRx>>,
     /// The interval at which heartbeat messages are sent.
     heartbeat_interval: Option<u64>,
     /// The token endpoint URL.
@@ -68,8 +72,8 @@ impl WsClient {
         let (write, read) = ws_stream.split();
         Ok(Self {
             token: token.to_owned(),
-            streamtx: write,
-            streamrx: read,
+            streamtx: Arc::new(Mutex::new(write)),
+            streamrx: Arc::new(Mutex::new(read)),
             heartbeat_interval: None,
             token_endpoint_url: token_endpoint_url.to_owned(),
             solana_rpc_url: solana_rpc_url.to_owned(),
@@ -91,7 +95,7 @@ impl WsClient {
                         Some(OpCode::HeartbeatAck) => self.handle_heartbeat_ack(value).await,
                         Some(OpCode::Disconnection) => self.handle_disconnection(value).await,
                         Some(OpCode::Ready) => self.handle_ready(value).await,
-                        Some(OpCode::Monitor) => self.handle_monitor(value).await,
+                        Some(OpCode::Monitor) => self.handle_monitor(value).await?,
                         _ => tracing::warn!("Unknown OpCode: {}", op),
                     }
                 }
@@ -105,12 +109,37 @@ impl WsClient {
     /// # Arguments
     ///
     /// * `value` - The JSON value of the event.
-    async fn handle_hello(&mut self, value: serde_json::Value) -> Result<(), SendHeartbeatError> {
+    async fn handle_hello(&mut self, value: serde_json::Value) -> Result<(), SendLoginError> {
         if let Ok(event) = serde_json::from_value::<HelloEvent>(value) {
             tracing::debug!("Received Hello event: {:?}", event);
             self.heartbeat_interval = Some(event.heartbeat_interval);
-            // Send initial heartbeat event using send_heartbeat function
-            self.send_heartbeat().await?;
+            // Send login event
+            let token = self.token.clone();
+            self.send_login(&token).await?;
+
+            let mut self_clone = self.clone();
+            tokio::spawn(async move {
+                if let Some(interval) = self_clone.heartbeat_interval {
+                    let mut interval = time::interval(Duration::from_millis(interval));
+                    interval.tick().await;
+                    let mut consecutive_failures = 0;
+                    loop {
+                        interval.tick().await;
+                        if let Err(e) = self_clone.send_heartbeat().await {
+                            tracing::warn!("Failed to send heartbeat: {:?}", e);
+                            consecutive_failures += 1;
+                            if consecutive_failures >= 3 {
+                                tracing::error!(
+                                    "Failed to send heartbeat 3 times in a row. Breaking the loop."
+                                );
+                                break;
+                            }
+                        } else {
+                            consecutive_failures = 0;
+                        }
+                    }
+                }
+            });
         }
         Ok(())
     }
@@ -153,7 +182,7 @@ impl WsClient {
     /// # Arguments
     ///
     /// * `value` - The JSON value of the event.
-    async fn handle_monitor(&mut self, value: serde_json::Value) {
+    async fn handle_monitor(&mut self, value: serde_json::Value) -> Result<(), WsClientError> {
         if let Ok(event) = serde_json::from_value::<MonitorEvent>(value) {
             process_message(
                 &event.d,
@@ -161,9 +190,10 @@ impl WsClient {
                 Path::new(&self.detected_tokens_file_path),
                 &self.token_endpoint_url,
             )
-            .await
-            .unwrap();
+            .await?;
         }
+
+        Ok(())
     }
 
     /// Sends a login event with the provided token.
@@ -181,8 +211,8 @@ impl WsClient {
             token: token.to_string(),
         };
         let msg = serde_json::to_string(&login_event).unwrap();
-        tracing::debug!("Sending login event: {:?}", login_event);
-        self.streamtx.send(Message::Text(msg)).await?;
+        tracing::debug!("Sending login event");
+        self.streamtx.lock().await.send(Message::Text(msg)).await?;
         Ok(())
     }
 
@@ -192,36 +222,23 @@ impl WsClient {
     ///
     /// A `Result` indicating success or failure.
     pub async fn start(&mut self) -> Result<(), WsClientError> {
-        // Send login event
-        let token = self.token.clone();
-        self.send_login(&token).await?;
-
-        let mut heartbeat_interval = self
-            .heartbeat_interval
-            .map(|interval| time::interval(Duration::from_millis(interval)));
-
-        loop {
-            tokio::select! {
-                // Handle incoming messages
-                msg = self.streamrx.next() => {
-                    match msg {
-                        Some(Ok(msg)) => self.handle_message(msg).await?,
-                        Some(Err(e)) => tracing::warn!("Error receiving message: {:?}", e),
-                        None => break,
+        let stream_rx_clone = self.streamrx.clone();
+        let mut stream_rx = stream_rx_clone.lock().await;
+        while let Some(msg) = stream_rx.next().await {
+            match msg {
+                Ok(msg) => {
+                    tracing::debug!("Received message: {:#?}", msg);
+                    let res = self.handle_message(msg).await;
+                    if let Err(e) = res {
+                        tracing::warn!("Error handling ws message: {}", e);
+                        tracing::debug!("Error: {:?}", e);
                     }
-                },
-                // Handle heartbeat ticking
-                _ = async {
-                    if let Some(ref mut interval) = heartbeat_interval {
-                        interval.tick().await;
-                    }
-                }, if heartbeat_interval.is_some() => {
-                    // Send heartbeat only if heartbeat_interval is Some
-                    self.send_heartbeat().await?;
+                }
+                Err(e) => {
+                    tracing::warn!("Error receiving message: {:?}", e);
                 }
             }
         }
-
         Ok(())
     }
 
@@ -235,8 +252,8 @@ impl WsClient {
             op: OpCode::Heartbeat,
         };
         let msg = serde_json::to_string(&heartbeat_event).unwrap();
-        tracing::debug!("Sending heartbeat event: {:?}", heartbeat_event);
-        self.streamtx.send(Message::Text(msg)).await?;
+        tracing::debug!("Sending heartbeat event: {}", msg);
+        self.streamtx.lock().await.send(Message::Text(msg)).await?;
         Ok(())
     }
 }

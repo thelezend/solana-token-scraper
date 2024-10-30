@@ -19,6 +19,7 @@ regex = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+serde_repr = { workspace = true }
 solana-client = { workspace = true }
 solana-sdk = { workspace = true }
 thiserror = { workspace = true }
@@ -26,7 +27,7 @@ tokio = { workspace = true, features = ["full"] }
 tokio-tungstenite = { workspace = true, features = ["native-tls"] }
 tracing = { workspace = true }
 tracing-appender = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 twilight-model = { workspace = true }
 
 [dev-dependencies]

@@ -52,20 +52,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file_appender = tracing_appender::rolling::daily("logs", ".log");
     let (file_writer, _file_writer_guard) = tracing_appender::non_blocking(file_appender);
     let file_layer = tracing_subscriber::fmt::layer()
-        .json()
+        .with_ansi(false)
         .with_writer(file_writer)
         .with_filter(EnvFilter::new("token_scraper=debug"));
 
     // Create a console layer with info level filtering
     let console_layer = tracing_subscriber::fmt::layer()
         .with_target(false)
-        .with_filter(EnvFilter::new("token_scraper=info"));
+        .with_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("token_scraper=info")),
+        );
 
     tracing_subscriber::registry()
         .with(file_layer)
         .with(console_layer)
         .init();
 
+    let mut telegram_task = tokio::spawn(async {});
     // Start the Telegram module
     if let Some(telegram_settings) = settings.telegram {
         let telegram_span = tracing::span!(tracing::Level::DEBUG, "telegram_module");
@@ -82,7 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let filters = filters.clone();
         let rpc_url = settings.solana.rpc_url.clone();
-        tokio::spawn(async move {
+        telegram_task = tokio::spawn(async move {
             let result = telegram::start(
                 &telegram_client,
                 &filters,
@@ -136,6 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    let mut ws_task = tokio::spawn(async {});
     if let Some(ws_settings) = settings.ws {
         let ws_span = tracing::span!(tracing::Level::DEBUG, "custom_ws_module");
         let _ws_enter = ws_span.enter();
@@ -151,12 +156,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .await?;
 
-        tokio::spawn(async move {
+        ws_task = tokio::spawn(async move {
             if let Err(e) = ws_client.start().await {
                 tracing::error!("Error while handling custom WebSocket message: {}", e);
                 tracing::debug!("Error: {:?}", e);
             }
         });
+    }
+
+    // Wait for all tasks to complete
+    let results = tokio::join!(telegram_task, ws_task);
+
+    if let Err(e) = results.0 {
+        tracing::error!("Telegram task failed: {:?}", e);
+    }
+    if let Err(e) = results.1 {
+        tracing::error!("WebSocket task failed: {:?}", e);
     }
 
     tracing::error!("Unexpected end of program");

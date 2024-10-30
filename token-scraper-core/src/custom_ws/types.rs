@@ -1,10 +1,13 @@
 //! Contains the custom WebSocket message types used by the client and server.
 
 use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::str::FromStr;
 
 /// Represents the different operation codes for WebSocket messages.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug, Deserialize_repr, Serialize_repr)]
+#[non_exhaustive]
+#[repr(u8)]
 pub enum OpCode {
     /// Sent by the server to initiate a connection.
     Hello = 10,
@@ -117,27 +120,7 @@ pub struct MonitorEvent {
     /// The operation code for the Monitor event.
     pub op: OpCode,
     /// The data contained in the Monitor event.
-    pub d: MonitorData,
-}
-
-/// Represents the data contained in a Monitor event.
-#[derive(Serialize, Deserialize, Debug)]
-pub struct MonitorData {
-    /// The task information in the Monitor event.
-    pub task: Task,
-    /// The data related to the task, in JSON format.
-    pub data: serde_json::Value,
-}
-
-/// Represents the task information in a Monitor event.
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Task {
-    /// The user associated with the task.
-    pub user: String,
-    /// Additional information about the user.
-    pub user_info: String,
-    /// The reason for the task.
-    pub reason: Reason,
+    pub d: serde_json::Value,
 }
 
 /// Represents the reason for a Monitor event.
