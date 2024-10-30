@@ -9,6 +9,7 @@
     clippy::missing_docs_in_private_items
 )]
 
+mod custom_ws;
 mod discord;
 mod filters;
 mod macros;
