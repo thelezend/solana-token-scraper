@@ -33,6 +33,8 @@ pub struct Settings {
     pub solana: SolanaSettings,
     /// Telegram settings.
     pub telegram: Option<TelegramSettings>,
+    /// Custom Websocket settings.
+    pub ws: Option<WsSettings>,
 }
 
 /// Discord settings for the token-scraper application.
@@ -51,6 +53,17 @@ pub struct TelegramSettings {
     pub api_id: i32,
     /// API hash for the Telegram client.
     pub api_hash: String,
+}
+
+/// Custom Websocket settings for the token-scraper application.
+#[derive(Debug, Deserialize)]
+pub struct WsSettings {
+    /// URL for the custom WebSocket server.
+    pub url: String,
+    /// Authorization token for the custom WebSocket server.
+    pub auth_token: String,
+    /// Token endpoint URL for the custom WebSocket server.
+    pub token_endpoint_url: String,
 }
 
 /// Solana settings for the token-scraper application.

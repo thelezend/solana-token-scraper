@@ -23,18 +23,15 @@ pub enum OpCode {
 }
 
 impl OpCode {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            OpCode::Hello => "hello",
-            OpCode::Heartbeat => "heartbeat",
-            OpCode::HeartbeatAck => "heartbeat_ack",
-            OpCode::Login => "login",
-            OpCode::Disconnection => "disconnection",
-            OpCode::Ready => "ready",
-            OpCode::Monitor => "monitor",
-        }
-    }
-
+    /// Converts a u64 value to an OpCode.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - A u64 value representing the operation code.
+    ///
+    /// # Returns
+    ///
+    /// * `Option<OpCode>` - An Option containing the corresponding OpCode if the value is valid, or None if it is not.
     pub fn from_u64(value: u64) -> Option<Self> {
         match value {
             10 => Some(OpCode::Hello),

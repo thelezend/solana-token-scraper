@@ -21,6 +21,7 @@ mod util;
 
 use std::{path::Path, sync::Arc};
 
+use custom_ws::client::WsClient;
 use discord::stream::start_stream;
 use filters::read_filters_from_csv;
 use message_handler::handle_message;
@@ -135,7 +136,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    tracing::error!("Neither Telegram nor Discord settings found, exiting...");
+    if let Some(ws_settings) = settings.ws {
+        let ws_span = tracing::span!(tracing::Level::DEBUG, "custom_ws_module");
+        let _ws_enter = ws_span.enter();
+
+        tracing::info!("Starting custom WebSocket module..");
+
+        let mut ws_client = WsClient::new(
+            &ws_settings.url,
+            &ws_settings.auth_token,
+            &ws_settings.token_endpoint_url,
+            &settings.solana.rpc_url,
+            DETECTED_TOKENS_FILE_PATH,
+        )
+        .await?;
+
+        tokio::spawn(async move {
+            if let Err(e) = ws_client.start().await {
+                tracing::error!("Error while handling custom WebSocket message: {}", e);
+                tracing::debug!("Error: {:?}", e);
+            }
+        });
+    }
+
+    tracing::error!("Unexpected end of program");
 
     Ok(())
 }

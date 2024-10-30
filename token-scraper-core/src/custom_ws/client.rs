@@ -1,11 +1,14 @@
 //! A WebSocket client that manages sending and receiving messages.
 
+use std::path::Path;
+
 use futures_util::{SinkExt, StreamExt};
 use tokio::time::{self, Duration};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use super::{
     errors::{SendHeartbeatError, SendLoginError, WsClientError},
+    processor::process_message,
     types::{
         DisconnectionEvent, HeartbeatAckEvent, HeartbeatEvent, HelloEvent, LoginEvent,
         MonitorEvent, OpCode, ReadyEvent,
@@ -32,6 +35,12 @@ pub struct WsClient {
     streamrx: WsRx,
     /// The interval at which heartbeat messages are sent.
     heartbeat_interval: Option<u64>,
+    /// The token endpoint URL.
+    token_endpoint_url: String,
+    /// The Solana RPC URL.
+    solana_rpc_url: String,
+    /// The file path where detected tokens are stored.
+    detected_tokens_file_path: String,
 }
 
 impl WsClient {
@@ -41,11 +50,20 @@ impl WsClient {
     ///
     /// * `url` - The WebSocket URL to connect to.
     /// * `token` - The authentication token.
+    /// * `token_endpoint_url` - The token endpoint URL.
+    /// * `solana_rpc_url` - The Solana RPC URL.
+    /// * `detected_tokens_file_path` - The file path where detected tokens are stored.
     ///
     /// # Returns
     ///
     /// A `Result` containing the `WsClient` on success, or a `WsClientError` on failure.
-    pub async fn new(url: &str, token: &str) -> Result<Self, WsClientError> {
+    pub async fn new(
+        url: &str,
+        token: &str,
+        token_endpoint_url: &str,
+        solana_rpc_url: &str,
+        detected_tokens_file_path: &str,
+    ) -> Result<Self, WsClientError> {
         let (ws_stream, _) = connect_async(url).await?;
         let (write, read) = ws_stream.split();
         Ok(Self {
@@ -53,6 +71,9 @@ impl WsClient {
             streamtx: write,
             streamrx: read,
             heartbeat_interval: None,
+            token_endpoint_url: token_endpoint_url.to_owned(),
+            solana_rpc_url: solana_rpc_url.to_owned(),
+            detected_tokens_file_path: detected_tokens_file_path.to_owned(),
         })
     }
 
@@ -134,7 +155,14 @@ impl WsClient {
     /// * `value` - The JSON value of the event.
     async fn handle_monitor(&mut self, value: serde_json::Value) {
         if let Ok(event) = serde_json::from_value::<MonitorEvent>(value) {
-            tracing::info!("Received Monitor event: {:?}", event);
+            process_message(
+                &event.d,
+                &self.solana_rpc_url,
+                Path::new(&self.detected_tokens_file_path),
+                &self.token_endpoint_url,
+            )
+            .await
+            .unwrap();
         }
     }
 
@@ -159,6 +187,10 @@ impl WsClient {
     }
 
     /// Starts the WebSocket client, sending a login event and processing incoming messages.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or failure.
     pub async fn start(&mut self) -> Result<(), WsClientError> {
         // Send login event
         let token = self.token.clone();

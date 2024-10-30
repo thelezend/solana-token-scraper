@@ -1,3 +1,5 @@
+//! Custom WebSocket implementation for the token scraper.
+
 mod processor;
 
 pub mod client;
